@@ -186,7 +186,7 @@ export const EvalPage = () => {
 					<div className="bg-gray-50 p-4 rounded border text-sm whitespace-pre-wrap h-32 overflow-y-auto">
 						{selectedPrompt.template}
 					</div>
-				)}useEffect
+				)}
 			</div>
 
 			{/* Model Selection and Run */}
@@ -308,9 +308,6 @@ export const EvalPage = () => {
 													<span className="block">
 														{r.sourceHighlightId} → {r.targetHighlightId}
 													</span>
-													{/* <span className="text-xs text-gray-500">
-														{r.type}
-													</span> */}
 												</div>
 											))}
 										</div>

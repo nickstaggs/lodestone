@@ -47,7 +47,6 @@ export async function performAnalysis({
 		// We trust the modelService has the correct model configured
 		const analysis = await modelService.analyse(textContent, prompt, {
 			apiKey,
-			// model: session.selectedModel?.model, // Optional if service has it
 		});
 
 		// Save the analysis results

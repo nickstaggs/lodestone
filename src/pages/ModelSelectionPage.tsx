@@ -70,7 +70,6 @@ export const ModelSelectionPage = () => {
 					company="OpenAI"
 					models={availableModels.OpenAI}
 					isLoading={modelsLoading}
-					// error={openAIError}
 					selectedModel={selectedModel}
 					onSelect={handleSelect}
 				/>
@@ -78,7 +77,6 @@ export const ModelSelectionPage = () => {
 					company="Anthropic"
 					models={availableModels.Anthropic}
 					isLoading={modelsLoading}
-					// error={anthropicError}
 					selectedModel={selectedModel}
 					onSelect={handleSelect}
 				/>
