@@ -8,8 +8,9 @@ import Editor from "../components/Editor";
 import ArgumentGraph from "../components/ArgumentGraph";
 import { ClaimsView } from "../components/ClaimsView";
 import { SessionManager } from "../utils/sessionManager";
-import { modelServices } from "../services/models";
 import { detailedPrompt } from "../evals/prompts";
+import { useModelContext } from "../context/ModelContext";
+import { ENV } from "../config/env";
 import type { HighlightWithText } from "../services/models/types";
 import type { Relationship } from "../utils/relationshipTypes";
 
@@ -20,6 +21,7 @@ type EditorPageProps = {
 export const EditorPage = ({ mode }: EditorPageProps) => {
 	const { id } = useParams<{ id: string }>();
 	const navigate = useNavigate();
+	const { getModelService } = useModelContext();
 	const [isAnalysing, setIsAnalysing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const editorRef =
@@ -158,12 +160,32 @@ export const EditorPage = ({ mode }: EditorPageProps) => {
 
 	const handleAnalyse = async () => {
 		if (!id || !session || !content) return;
+
+		if (!session.selectedModel) {
+			setError("Please select a model before analysing");
+			return;
+		}
+
 		setIsAnalysing(true);
 		setError(null);
 
 		try {
-			// Get the GPT-4o-mini service
-			const service = modelServices["gpt4o-mini"];
+			// Resolve API key
+			let apiKey: string | undefined;
+			if (session.selectedModel.company === "Anthropic") {
+				apiKey = ENV.ANTHROPIC_API_KEY;
+			} else {
+				apiKey = ENV.OPENAI_API_KEY;
+			}
+
+			if (!apiKey) {
+				throw new Error(
+					`API key not found for ${session.selectedModel.company}. Please check your .env file.`
+				);
+			}
+
+			// Get the service
+			const service = getModelService(session.selectedModel);
 
 			// Extract text content from the editor
 			const textContent =
@@ -180,21 +202,13 @@ export const EditorPage = ({ mode }: EditorPageProps) => {
 			// Prepare the prompt by replacing the text placeholder
 			const prompt = detailedPrompt.template.replace("{{text}}", textContent);
 
-			// Get API key from environment
-			const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-			if (!apiKey) {
-				throw new Error(
-					"OpenAI API key not found in environment variables. Please set VITE_OPENAI_API_KEY in your .env file."
-				);
-			}
-
-			// Send to OpenAI with API key
+			// Send to model service with API key
 			const analysis = await service.analyse(textContent, prompt, { apiKey });
 
 			// Save the analysis results
 			await SessionManager.saveAnalysis(
 				parseInt(id),
-				"gpt4o-mini",
+				session.selectedModel.model,
 				detailedPrompt.id,
 				content.content,
 				analysis.highlights,
@@ -344,6 +358,21 @@ export const EditorPage = ({ mode }: EditorPageProps) => {
 					<h1 className="text-2xl font-serif text-center mx-auto">
 						{session.title}
 					</h1>
+					<button
+						onClick={() => navigate(`/session/${id}/model`)}
+						className="text-sm text-gray-500 hover:text-black mr-4 px-3 py-1 rounded hover:bg-gray-100 transition-colors"
+					>
+						{session.selectedModel ? (
+							<span className="flex flex-col items-end leading-tight">
+								<span className="text-xs uppercase tracking-wider font-semibold opacity-70">
+									Model
+								</span>
+								<span>{session.selectedModel.model}</span>
+							</span>
+						) : (
+							"Select Model"
+						)}
+					</button>
 					{mode === "input" && (
 						<button
 							onClick={handleAnalyse}

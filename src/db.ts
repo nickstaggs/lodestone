@@ -3,6 +3,11 @@ import type { RemirrorJSON } from "remirror";
 import type { ModelName, HighlightWithText } from "./services/models/types";
 import type { Relationship } from "./utils/relationshipTypes";
 
+export interface LLMModel {
+	company: "Anthropic" | "OpenAI";
+	model: string;
+}
+
 // Define types for our database content
 export interface EditorContent {
 	id?: number;
@@ -41,6 +46,9 @@ export interface Session {
 
 	// Analysis content (optional until analysis is performed)
 	analysedContent?: AnalysedContent;
+
+	// Selected LLM Model
+	selectedModel?: LLMModel;
 
 	// Dynamic questions (optional)
 	dynamicQuestions?: DynamicQuestion[];

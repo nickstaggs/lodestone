@@ -3,6 +3,7 @@ import { EditorPage } from "./pages/EditorPage";
 import { EvalPage } from "./pages/EvalPage";
 import { SessionsPage } from "./pages/SessionsPage";
 import { InputPage } from "./pages/InputPage";
+import { ModelSelectionPage } from "./pages/ModelSelectionPage";
 
 const App = () => {
 	return (
@@ -32,6 +33,7 @@ const App = () => {
 				<Routes>
 					<Route path="/" element={<SessionsPage />} />
 					<Route path="/input/:id" element={<InputPage />} />
+					<Route path="/session/:id/model" element={<ModelSelectionPage />} />
 					<Route path="/evals" element={<EvalPage />} />
 					<Route
 						path="/analysis/:id"

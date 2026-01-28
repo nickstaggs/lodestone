@@ -1,7 +1,7 @@
 import type { Relationship } from "../../utils/relationshipTypes";
 import { XYPosition } from "reactflow";
 
-export type ModelName = "gpt4o-mini" | "gpt-4o" | "claude-3.5";
+export type ModelName = string; // Was union of strings
 
 export type HighlightWithText = {
 	id: string;
@@ -37,4 +37,9 @@ export interface ModelService {
 		prompt: string,
 		config: ModelConfig
 	) => Promise<ModelResponse>;
+	generateQuestions?: (
+		text: string,
+		prompt: string,
+		config: ModelConfig
+	) => Promise<string[]>;
 }

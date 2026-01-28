@@ -1,9 +1,11 @@
+import OpenAI from "openai";
 import type {
 	ModelService,
 	ModelConfig,
 	ModelResponse,
 	ModelName,
 } from "./types";
+import { LABEL_CONFIGS } from "../../utils/constants";
 
 type RawHighlight = {
 	id: string;
@@ -18,8 +20,38 @@ export class OpenAIService implements ModelService {
 
 	constructor(name: ModelName) {
 		this.name = name;
-		this.defaultModel =
-			name === "gpt4o-mini" ? "gpt-4-0125-preview" : "gpt-4-turbo-preview";
+		this.defaultModel = name;
+	}
+
+	static async listModels(apiKey: string): Promise<string[]> {
+		const openai = new OpenAI({
+			apiKey: apiKey,
+			dangerouslyAllowBrowser: true,
+		});
+		try {
+			const list = await openai.models.list();
+			return list.data
+				.map((m) => m.id)
+				.filter(
+					(id) =>
+						!id.includes("vision") && // vision specific models sometimes separate? actually gpt-4-vision is chat model.
+						!id.includes("audio") &&
+						!id.includes("realtime") &&
+						!id.includes("codex") &&
+						!id.includes("tts") &&
+						!id.includes("embedding") &&
+						!id.includes("whisper") &&
+						!id.includes("sora") &&
+						!id.includes("transcribe") &&
+						!id.includes("image") &&
+						!id.includes("moderation")
+				)
+				.sort()
+				.reverse();
+		} catch (e) {
+			console.error("Failed to list OpenAI models", e);
+			return [];
+		}
 	}
 
 	async analyse(
@@ -33,120 +65,99 @@ export class OpenAIService implements ModelService {
 
 		console.log(`OpenAI Service (${this.name}): Starting request...`);
 		console.log(
-			`OpenAI Service (${this.name}): Using model ${this.defaultModel}`
+			`OpenAI Service (${this.name}): Using model ${config.model || this.defaultModel}`
 		);
 
-		const requestBody = {
-			model: config.model || this.defaultModel,
-			messages: [
-				{
-					role: "user",
-					content: prompt,
-				},
-			],
-			temperature: 0.3,
-			response_format: { type: "json_object" },
-			seed: 1234, // For consistent results during testing
-			max_tokens: 3000, // Set a token limit to ensure complete responses
-		};
-
-		console.log(
-			`OpenAI Service (${this.name}): Request body:`,
-			JSON.stringify(requestBody, null, 2)
-		);
-
-		const response = await fetch("https://api.openai.com/v1/chat/completions", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${config.apiKey}`,
-				"OpenAI-Beta": "assistants=v1",
-			},
-			body: JSON.stringify(requestBody),
+		const openai = new OpenAI({
+			apiKey: config.apiKey,
+			dangerouslyAllowBrowser: true,
 		});
 
-		console.log(
-			`OpenAI Service (${this.name}): Response status:`,
-			response.status
-		);
-
-		if (!response.ok) {
-			const error = await response.json();
-			console.error(`OpenAI Service (${this.name}): API error:`, error);
-			throw new Error(
-				`OpenAI API error: ${error.error?.message || "Unknown error"}`
-			);
-		}
-
-		const data = await response.json();
-		console.log(
-			`OpenAI Service (${this.name}): Raw response:`,
-			JSON.stringify(data, null, 2)
-		);
-
 		try {
-			// Log the raw content before trying to parse it
-			const rawContent = data.choices[0].message.content;
-			console.log(
-				`OpenAI Service (${this.name}): Raw content from model:`,
-				rawContent
-			);
+			const response = await openai.responses.create({
+				model: config.model || this.defaultModel,
+				input: prompt,
+				text: {
+					format: {
+						type: "json_schema",
+						name: "analysis_response",
+						schema: {
+							type: "object",
+							properties: {
+								highlights: {
+									type: "array",
+									items: {
+										type: "object",
+										properties: {
+											id: { type: "string" },
+											labelType: {
+												type: "string",
+												enum: LABEL_CONFIGS.map((l) => l.id),
+											},
+											text: { type: "string" },
+										},
+										required: ["id", "labelType", "text"],
+										additionalProperties: false,
+									},
+								},
+								relationships: {
+									type: "array",
+									items: {
+										type: "object",
+										properties: {
+											sourceHighlightId: { type: "string" },
+											targetHighlightId: { type: "string" },
+										},
+										required: ["sourceHighlightId", "targetHighlightId"],
+										additionalProperties: false,
+									},
+								},
+							},
+							required: ["highlights", "relationships"],
+							additionalProperties: false,
+						},
+						strict: true,
+					},
+				}
+			});
 
-			// The content should be JSON with the response_format: json_object setting
+			// The responses API returns the content directly in output_text
+			// Note: If the API returns a parsed object for json_schema, we might need to adjust,
+			// but for now assuming it returns string or we check the type.
+			// Based on docs, it seems to return data, but since we're using the standard create,
+			// let's assume it matches the new shape which simplifies access.
+			// However, without exact type definitions for `responses` + `json_schema`,
+			// we'll access output_text (from snippet) or parse if needed.
+			// If structured output is fully integrated, response might HAVE the object.
+			// But sticking to safe JSON.parse of the text output for safety.
+			const contentStr = response.output_text;
+
+			if (!contentStr) {
+				throw new Error("OpenAI response missing content");
+			}
+
 			let result;
 			try {
-				// If it's a string, try to parse it
-				result =
-					typeof rawContent === "string" ? JSON.parse(rawContent) : rawContent;
+				result = JSON.parse(contentStr);
 			} catch (parseError) {
 				console.error(
 					`OpenAI Service (${this.name}): Failed to parse content as JSON:`,
 					parseError
 				);
-				throw new Error(
-					`Response was not valid JSON. Raw content: ${rawContent.slice(
-						0,
-						200
-					)}...`
-				);
-			}
-
-			if (!result || typeof result !== "object") {
-				console.error(
-					`OpenAI Service (${this.name}): Invalid response format:`,
-					result
-				);
-				throw new Error(
-					`Response was not a JSON object. Raw content: ${JSON.stringify(
-						rawContent
-					).slice(0, 200)}...`
-				);
-			}
-
-			if (!result.highlights || !Array.isArray(result.highlights)) {
-				console.error(
-					`OpenAI Service (${this.name}): Missing or invalid highlights:`,
-					result
-				);
-				throw new Error(
-					`Response missing required 'highlights' array. Raw content: ${JSON.stringify(
-						rawContent
-					).slice(0, 200)}...`
-				);
+				throw new Error("Response was not valid JSON.");
 			}
 
 			// Validate that each highlight has required properties
 			const validHighlights = result.highlights.map(
 				(highlight: RawHighlight) => {
+					// With structured outputs these checks are redundant but safer to keep
 					if (!highlight.id || !highlight.labelType || !highlight.text) {
 						console.error(
 							`OpenAI Service (${this.name}): Invalid highlight format:`,
 							highlight
 						);
 						throw new Error(
-							`Highlight missing required properties (id, labelType, text). Raw content: ${JSON.stringify(
-								highlight
-							).slice(0, 200)}...`
+							"Highlight missing required properties (id, labelType, text)."
 						);
 					}
 					return {
@@ -161,36 +172,19 @@ export class OpenAIService implements ModelService {
 				}
 			);
 
-			if (!result.relationships || !Array.isArray(result.relationships)) {
-				console.error(
-					`OpenAI Service (${this.name}): Missing or invalid relationships:`,
-					result
-				);
-				throw new Error(
-					`Response missing required 'relationships' array. Raw content: ${JSON.stringify(
-						rawContent
-					).slice(0, 200)}...`
-				);
-			}
-
 			console.log(
 				`OpenAI Service (${this.name}): Successfully parsed response`
 			);
 			return {
 				highlights: validHighlights,
-				relationships: result.relationships,
+				relationships: result.relationships || [],
 			};
 		} catch (err) {
-			console.error(
-				`OpenAI Service (${this.name}): Failed to parse response:`,
-				err,
-				"Raw response:",
-				data
-			);
+			console.error(`OpenAI Service (${this.name}): API error:`, err);
 			if (err instanceof Error) {
-				throw err; // Throw the detailed error we created above
+				throw new Error(`OpenAI API error: ${err.message}`);
 			}
-			throw new Error("Failed to parse model response");
+			throw new Error("Unknown OpenAI API error");
 		}
 	}
 
@@ -208,62 +202,51 @@ export class OpenAIService implements ModelService {
 		}
 
 		console.log(
-			`OpenAI: Starting question generation using model ${this.defaultModel}`
+			`OpenAI: Starting question generation using model ${config.model || this.defaultModel}`
 		);
 
-		const requestBody = {
-			model: config.model || this.defaultModel,
-			messages: [
-				{
-					role: "user",
-					content: prompt,
-				},
-			],
-			temperature: 0.3,
-			response_format: { type: "json_object" },
-			seed: 1234, // For consistent results during testing
-			max_tokens: 1000, // Lower token limit for questions
-		};
-
-		const response = await fetch("https://api.openai.com/v1/chat/completions", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${config.apiKey}`,
-				"OpenAI-Beta": "assistants=v1",
-			},
-			body: JSON.stringify(requestBody),
+		const openai = new OpenAI({
+			apiKey: config.apiKey,
+			dangerouslyAllowBrowser: true,
 		});
 
-		if (!response.ok) {
-			const error = await response.json();
-			console.error(`OpenAI: API error:`, error);
-			throw new Error(
-				`OpenAI API error: ${error.error?.message || "Unknown error"}`
-			);
-		}
-
-		const data = await response.json();
-
 		try {
-			// Get the raw content
-			const rawContent = data.choices[0].message.content;
-			console.log(`OpenAI: Received question generation response`);
+			const response = await openai.responses.create({
+				model: config.model || this.defaultModel,
+				input: prompt,
+				text: {
+					format: {
+						type: "json_schema",
+						
+						name: "questions_response",
+						schema: {
+							type: "object",
+							properties: {
+								questions: {
+									type: "array",
+									items: { type: "string" },
+								},
+							},
+							required: ["questions"],
+							additionalProperties: false,
+						},
+						strict: true,
+					}
+				},
+			});
 
-			// The content should be JSON with the response_format: json_object setting
-			let result;
-			try {
-				// If it's a string, try to parse it
-				result =
-					typeof rawContent === "string" ? JSON.parse(rawContent) : rawContent;
-			} catch (parseError) {
-				console.error(`OpenAI: Failed to parse content as JSON`);
-				throw new Error("Response was not valid JSON");
+			const contentStr = response.output_text;
+			if (!contentStr) {
+				throw new Error("OpenAI response missing content");
 			}
 
-			if (!result || typeof result !== "object") {
-				console.error(`OpenAI: Invalid response format`);
-				throw new Error("Response was not a JSON object");
+			console.log(`OpenAI: Received question generation response`);
+
+			let result;
+			try {
+				result = JSON.parse(contentStr);
+			} catch (_) {
+				throw new Error("Response was not valid JSON");
 			}
 
 			// Look for questions array in the response
@@ -274,24 +257,6 @@ export class OpenAIService implements ModelService {
 				return result.questions;
 			}
 
-			// If not found directly, try to extract from a regex pattern
-			const contentString = JSON.stringify(result);
-			const questionsMatch = contentString.match(/"questions"\s*:\s*(\[.*?\])/);
-			if (questionsMatch && questionsMatch[1]) {
-				try {
-					const questions = JSON.parse(questionsMatch[1]);
-					if (Array.isArray(questions)) {
-						console.log(
-							`OpenAI: Extracted ${questions.length} questions using regex`
-						);
-						return questions;
-					}
-				} catch (e) {
-					console.error(`OpenAI: Error parsing questions using regex`);
-				}
-			}
-
-			console.error(`OpenAI: Could not find questions in response`);
 			throw new Error("No questions found in the response");
 		} catch (err) {
 			console.error(
