@@ -1,11 +1,7 @@
 import type { RemirrorJSON } from "remirror";
-import { db, type Session } from "../db";
+import { db, type Session, type LLMModel } from "../db";
 import type { ModelName, HighlightWithText } from "../services/models/types";
 import type { Relationship } from "../utils/relationshipTypes";
-import { LABEL_CONFIGS } from "../utils/constants";
-import { annotateText } from "../services/annotation/huggingFaceService";
-import { createDocumentWithMarks } from "../services/annotation/documentUtils";
-import { extractTextFromRemirrorJSON } from "../services/annotation/huggingFaceService";
 import { setHighlight, getHighlight } from "./highlightMap";
 
 type HighlightType = HighlightWithText[];
@@ -86,6 +82,32 @@ export class SessionManager {
 	}
 
 	/**
+	 * Update the list of dynamic questions for a session
+	 */
+	static async updateDynamicQuestions(
+		sessionId: number,
+		questions: any[] // Using any for now to avoid circular dependency, but should match DynamicQuestion[] type
+	): Promise<void> {
+		await db.sessions.update(sessionId, {
+			dynamicQuestions: questions,
+			lastModified: new Date(),
+		});
+	}
+
+	/**
+	 * Update the selected model for a session
+	 */
+	static async updateSessionModel(
+		sessionId: number,
+		model: LLMModel
+	): Promise<void> {
+		await db.sessions.update(sessionId, {
+			selectedModel: model,
+			lastModified: new Date(),
+		});
+	}
+
+	/**
 	 * Start analysis for a session
 	 */
 	static async startAnalysis(sessionId: number): Promise<void> {
@@ -97,64 +119,6 @@ export class SessionManager {
 			status: "analysis",
 			lastModified: new Date(),
 		});
-	}
-
-	/**
-	 * Analyse text using Hugging Face zero-shot classification
-	 * @param sessionId The session ID
-	 * @param options Configuration options for the analysis
-	 */
-	static async analyseWithHuggingFace(
-		sessionId: number,
-		options: {
-			modelName?: string;
-			confidenceThreshold?: number;
-			includeOverlapping?: boolean;
-		} = {}
-	): Promise<void> {
-		const session = await this.getSession(sessionId);
-		if (!session) throw new Error("Session not found");
-
-		try {
-			// Extract plain text from Remirror JSON
-			const fullText = extractTextFromRemirrorJSON(
-				session.inputContent.content
-			);
-
-			if (!fullText.trim()) {
-				throw new Error("No text content to analyse");
-			}
-
-			// Annotate the text using Hugging Face
-			const annotations = await annotateText(fullText, LABEL_CONFIGS, {
-				model: options.modelName,
-				confidenceThreshold: options.confidenceThreshold || 0.65,
-				includeOverlapping: options.includeOverlapping || true,
-			});
-
-			if (annotations.length === 0) {
-				console.warn("No annotations found");
-			}
-
-			// Create a new document with the annotations applied as marks
-			const contentWithMarks = createDocumentWithMarks(
-				session.inputContent.content,
-				annotations
-			);
-
-			// Save the analysis results
-			await this.saveAnalysis(
-				sessionId,
-				"huggingface" as ModelName,
-				options.modelName || "zero-shot",
-				contentWithMarks,
-				annotations,
-				[] // No relationships initially
-			);
-		} catch (error) {
-			console.error("Error analysing with Hugging Face:", error);
-			throw new Error(`Failed to analyse with Hugging Face: ${error}`);
-		}
 	}
 
 	/**

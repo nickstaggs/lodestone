@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { RemirrorJSON } from "remirror";
 import { DynamicQuestionsService } from "../services/dynamicQuestions";
-import { DynamicQuestion } from "../db";
+import { DynamicQuestion, LLMModel } from "../db";
 import { extractTextFromContent } from "../utils/textUtils";
+import { ENV } from "../config/env";
+import { useModelContext } from "../context/ModelContext";
 
 // Configuration for dynamic questions feature
 const DYNAMIC_QUESTIONS_CONFIG = {
@@ -15,13 +17,16 @@ interface UseDynamicQuestionsProps {
 	sessionId: number | null;
 	content: RemirrorJSON;
 	topic: string;
+	selectedModel?: LLMModel;
 }
 
 export function useDynamicQuestions({
 	sessionId,
 	content,
 	topic,
+	selectedModel,
 }: UseDynamicQuestionsProps) {
+	const { getModelService } = useModelContext();
 	// State for dynamic questions
 	const [questions, setQuestions] = useState<DynamicQuestion[]>([]);
 	const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
@@ -248,14 +253,31 @@ export function useDynamicQuestions({
 		debounceTimerRef.current = setTimeout(async () => {
 			// Ensure the user has paused typing before generating questions
 			try {
+
+				if (!selectedModel) {
+					console.warn("No model selected, skipping dynamic questions");
+					return;
+				}
+
 				setIsLoadingQuestions(true);
 
-				// Get API key from environment
-				const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-				if (!apiKey) {
-					console.error("OpenAI API key not found");
-					throw new Error("OpenAI API key not found in environment variables");
+				// Get API key from environment based on selected model
+				let apiKey: string | undefined;
+				if (selectedModel.company === "Anthropic") {
+					apiKey = ENV.ANTHROPIC_API_KEY;
+				} else {
+					apiKey = ENV.OPENAI_API_KEY;
 				}
+
+				if (!apiKey) {
+					console.error("API key not found for model:", selectedModel.company);
+					throw new Error(
+						`${selectedModel.company} API key not found in environment variables`
+					);
+				}
+
+				// Get model service
+				const modelService = getModelService(selectedModel);
 
 				// Get previously asked questions to avoid repeating
 				const allQuestions = await DynamicQuestionsService.getAllQuestions(
@@ -265,17 +287,20 @@ export function useDynamicQuestions({
 
 				// Generate new questions
 				console.log(
-					"Calling OpenAI to generate new questions for session",
+					"Calling model to generate new questions for session",
 					sessionId
 				);
-				const newQuestions = await DynamicQuestionsService.generateQuestions({
-					text: textContent,
-					sessionId: sessionId,
-					topic: topic,
-					apiKey,
-					previousQuestions,
-				});
-				console.log("Generated new questions:", newQuestions.length);
+				const newQuestions = await DynamicQuestionsService.generateQuestions(
+					{
+						text: textContent,
+						sessionId: sessionId,
+						topic: topic,
+						apiKey,
+						previousQuestions,
+					},
+					modelService
+				);
+				console.log("Generated questions:", newQuestions.length);
 
 				// Update the displayed questions
 				if (newQuestions.length > 0) {

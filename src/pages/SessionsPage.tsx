@@ -55,7 +55,7 @@ export const SessionsPage = () => {
 
 			// Navigate directly to the new session with its ID
 			if (newSession.id) {
-				navigate(`/input/${newSession.id}`);
+				navigate(`/session/${newSession.id}/model`);
 			} else {
 				console.error("Failed to create a new session: No ID returned");
 			}

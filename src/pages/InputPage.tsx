@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useBeforeUnload } from "react-router-dom";
+import { useBeforeUnload, useNavigate } from "react-router-dom";
 import Editor from "../components/Editor";
 import DynamicQuestionsPanel from "../components/DynamicQuestionsPanel";
 
@@ -9,6 +9,7 @@ import { useDynamicQuestions } from "../hooks/useDynamicQuestions";
 import { useAnalysis } from "../hooks/useAnalysis";
 
 export const InputPage = () => {
+	const navigate = useNavigate();
 	// Session management
 	const {
 		session,
@@ -44,6 +45,7 @@ export const InputPage = () => {
 		sessionId: sessionIdRef.current,
 		content,
 		topic,
+		selectedModel: session?.selectedModel,
 	});
 
 	// Analysis functionality
@@ -52,6 +54,7 @@ export const InputPage = () => {
 		content,
 		isDirty,
 		saveChanges,
+		selectedModel: session?.selectedModel,
 	});
 
 	// Save before leaving
@@ -104,6 +107,16 @@ export const InputPage = () => {
 				</div>
 			) : (
 				<>
+					<div className="flex justify-end mb-4">
+						<button
+							onClick={() => sessionId && navigate(`/session/${sessionId}/model`)}
+							className="text-sm text-gray-500 hover:text-black flex items-center gap-2 px-3 py-1 rounded hover:bg-gray-100 transition-colors"
+						>
+							<span className="font-medium">Model:</span>
+							{session?.selectedModel?.model || "Select Model"}
+						</button>
+					</div>
+
 					<div>
 						<label className="uppercase text-zinc-600 text-sm font-medium mb-2 block tracking-wider">
 							Topic
@@ -121,7 +134,7 @@ export const InputPage = () => {
 					<div className="mt-8 relative">
 						<div className="w-full">
 							<label className="uppercase text-zinc-600 text-sm font-medium mb-2 block tracking-wider">
-								Initial Ideas
+								Exploration
 							</label>
 							<div className="min-h-[400px] mb-8">
 								<Editor

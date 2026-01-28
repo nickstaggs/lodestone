@@ -1,17 +1,17 @@
 import type { RemirrorJSON } from "remirror";
 import { SessionManager } from "./sessionManager";
-import { modelServices } from "../services/models";
-import type { ModelName } from "../services/models/types";
+import type { ModelService } from "../services/models/types";
 import { detailedPrompt } from "../evals/prompts";
 import { extractTextFromContent } from "./textUtils";
 
 interface AnalysisOptions {
 	sessionId: number;
 	content: RemirrorJSON;
-	modelName?: string;
 	promptId?: string;
 	isDirty: boolean;
 	saveChanges: () => Promise<void>;
+	modelService: ModelService;
+	apiKey: string;
 }
 
 /**
@@ -21,10 +21,11 @@ interface AnalysisOptions {
 export async function performAnalysis({
 	sessionId,
 	content,
-	modelName = "gpt4o-mini",
 	promptId = detailedPrompt.id,
 	isDirty,
 	saveChanges,
+	modelService,
+	apiKey,
 }: AnalysisOptions): Promise<{ success: boolean; error?: string }> {
 	try {
 		// First save any pending changes
@@ -32,11 +33,9 @@ export async function performAnalysis({
 			await saveChanges();
 		}
 
-		// Get the model service
-		const service = modelServices[modelName as keyof typeof modelServices];
-		if (!service) {
-			throw new Error(`Model service '${modelName}' not found`);
-		}
+		// Get session to retrieve title or verify existence
+		const session = await SessionManager.getSession(sessionId);
+		if (!session) throw new Error("Session not found");
 
 		// Extract text content from the editor
 		const textContent = extractTextFromContent(content);
@@ -44,21 +43,17 @@ export async function performAnalysis({
 		// Prepare the prompt by replacing the text placeholder
 		const prompt = detailedPrompt.template.replace("{{text}}", textContent);
 
-		// Get API key from environment
-		const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-		if (!apiKey) {
-			throw new Error(
-				"OpenAI API key not found in environment variables. Please set VITE_OPENAI_API_KEY in your .env file."
-			);
-		}
-
 		// Send to model service with API key
-		const analysis = await service.analyse(textContent, prompt, { apiKey });
+		// We trust the modelService has the correct model configured
+		const analysis = await modelService.analyse(textContent, prompt, {
+			apiKey,
+			// model: session.selectedModel?.model, // Optional if service has it
+		});
 
 		// Save the analysis results
 		await SessionManager.saveAnalysis(
 			sessionId,
-			modelName as ModelName,
+			modelService.name, // Use service name as model string
 			promptId,
 			content,
 			analysis.highlights,
@@ -67,10 +62,10 @@ export async function performAnalysis({
 
 		return { success: true };
 	} catch (error) {
-		console.error("Failed to create and analyse session:", error);
+		console.error("Analysis error:", error);
 		return {
 			success: false,
-			error: error instanceof Error ? error.message : "Unknown error",
+			error: error instanceof Error ? error.message : "Analysis failed",
 		};
 	}
 }

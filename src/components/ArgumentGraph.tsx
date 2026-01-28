@@ -357,7 +357,7 @@ function createRelationshipBasedLayout(
 	const nodePositions: Record<string, { column: number; row: number }> = {};
 
 	// Initialize grid
-	sortedTypes.forEach((type, columnIndex) => {
+	sortedTypes.forEach((_, columnIndex) => {
 		grid[columnIndex] = {};
 	});
 
@@ -884,7 +884,7 @@ export const ArgumentGraph = ({
 
 	// Handle node drag stop and update positions
 	const handleNodeDragStop = useCallback(
-		(event: React.MouseEvent, node: Node<NodeData>) => {
+		(_: React.MouseEvent, node: Node<NodeData>) => {
 			setIsDragging(false);
 
 			// Update highlight positions in the database
@@ -933,7 +933,7 @@ export const ArgumentGraph = ({
 	}, []);
 
 	// Handle node double-click to edit text
-	const onNodeDoubleClick: NodeMouseHandler = useCallback((event, node) => {
+	const onNodeDoubleClick: NodeMouseHandler = useCallback((_, node) => {
 		setEditingNode({
 			id: node.id,
 			text: node.data.label,
@@ -999,7 +999,7 @@ export const ArgumentGraph = ({
 
 	// Handle edge click (for deletion)
 	const onEdgeClick = useCallback(
-		(event: React.MouseEvent, edge: Edge) => {
+		(_: React.MouseEvent, edge: Edge) => {
 			if (window.confirm("Do you want to delete this relationship?")) {
 				handleEdgeDelete(edge.id);
 			}

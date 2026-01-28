@@ -3,6 +3,28 @@ import type { HighlightWithText } from "../models/types";
 import { setHighlight } from "../../utils/highlightMap";
 
 /**
+ * Extract text from Remirror JSON format
+ */
+export function extractTextFromRemirrorJSON(content: any): string {
+	if (!content || !content.content) {
+		return "";
+	}
+
+	return content.content
+		.map((paragraph: any) => {
+			if (paragraph.content) {
+				return paragraph.content
+					.map((node: any) => node.text || "")
+					.filter(Boolean)
+					.join("");
+			}
+			return "";
+		})
+		.filter(Boolean)
+		.join("\n");
+}
+
+/**
  * Creates a Remirror document with marks applied for annotations
  * @param originalContent The original Remirror JSON content
  * @param annotations The annotations to apply as marks

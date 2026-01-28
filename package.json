@@ -10,9 +10,9 @@
 		"preview": "vite preview"
 	},
 	"dependencies": {
+		"@anthropic-ai/sdk": "^0.71.2",
 		"@emotion/react": "^11.13.5",
 		"@emotion/styled": "^11.13.5",
-		"@huggingface/inference": "^3.3.6",
 		"@remirror/pm": "^3.0.0",
 		"@remirror/react": "^3.0.1",
 		"@remirror/react-editors": "^2.0.1",
@@ -23,6 +23,7 @@
 		"date-fns": "^4.1.0",
 		"dexie": "^4.0.11",
 		"dexie-react-hooks": "^1.1.7",
+		"openai": "^6.16.0",
 		"react": "^18.3.1",
 		"react-dom": "^18.3.1",
 		"react-router-dom": "^7.1.4",
